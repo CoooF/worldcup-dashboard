@@ -1726,11 +1726,12 @@ async function addToCompare(type, id, name) {
     renderCompareBar();
     return;
   }
-  // 满了替换最早的一个
+  // 已满2个：提示并清空旧的，重新开始
   if (COMPARE_ITEMS.length >= 2) {
-    COMPARE_ITEMS.shift();
+    COMPARE_ITEMS = [];
+    toast('已清空上次对比，开始新的选择', '');
   }
-  const slot = { id, name, data: null };
+  const slot = { id, name, data: null, loading: true };
   COMPARE_ITEMS.push(slot);
   renderCompareBar();
   toast(`已加入对比 (${COMPARE_ITEMS.length}/2)`, 'ok');
@@ -1748,6 +1749,7 @@ async function addToCompare(type, id, name) {
   } catch (e) {
     slot.data = { error: e.message };
   }
+  slot.loading = false;
   renderCompareBar();
 }
 
@@ -1763,41 +1765,54 @@ function renderCompareBar() {
   requestAnimationFrame(() => bar.classList.add('show'));
 
   $('#compare-count').textContent = `${COMPARE_ITEMS.length}/2`;
-  const slotsHtml = COMPARE_ITEMS.map((it, i) => {
+  // 用 data-id（唯一标识）而不是 index，避免删除后错乱
+  const slotsHtml = COMPARE_ITEMS.map(it => {
     const flagHtml = COMPARE_TYPE === 'team' ? flag(it.name) : (it.data && it.data.wiki && it.data.wiki.detail ? flag(it.data.wiki.detail.national) : '');
+    const loadingTag = it.loading ? ' <span class="hint">⏳</span>' : '';
     return `<div class="compare-slot">
       ${flagHtml}
-      <span class="slot-name">${esc(it.name)}</span>
-      <button class="slot-remove" data-idx="${i}">✕</button>
+      <span class="slot-name">${esc(it.name)}${loadingTag}</span>
+      <button class="slot-remove" data-id="${esc(it.id)}">✕</button>
     </div>`;
   }).join('');
-  // 补空槽
-  for (let i = COMPARE_ITEMS.length; i < 2; i++) {
-    slotsHtml && (slotsHtml += '<div class="compare-slot empty">+</div>');
-  }
   $('#compare-slots').innerHTML = slotsHtml;
-  $('#compare-start').disabled = COMPARE_ITEMS.length < 2;
-
-  // 绑定删除
-  $$('#compare-slots .slot-remove').forEach(btn => {
-    btn.addEventListener('click', () => {
-      COMPARE_ITEMS.splice(parseInt(btn.dataset.idx), 1);
-      if (!COMPARE_ITEMS.length) COMPARE_TYPE = null;
-      renderCompareBar();
-    });
-  });
+  // 按钮状态：数据未就绪则禁用
+  const anyLoading = COMPARE_ITEMS.some(it => it.loading || (!it.data && !it.error));
+  $('#compare-start').disabled = COMPARE_ITEMS.length < 2 || anyLoading;
 }
 
 // ─── 开始对比：渲染对比页 ──────────────────────────────
-$('#compare-start').addEventListener('click', () => {
+// 对比栏事件全部用委托，绑在父容器上（只绑一次，不受重新渲染影响）
+$('#compare-slots').addEventListener('click', (e) => {
+  const btn = e.target.closest('.slot-remove');
+  if (!btn) return;
+  const id = btn.dataset.id;
+  COMPARE_ITEMS = COMPARE_ITEMS.filter(it => String(it.id) !== String(id));
+  if (!COMPARE_ITEMS.length) COMPARE_TYPE = null;
+  renderCompareBar();
+});
+
+$('#compare-start').addEventListener('click', async () => {
   if (COMPARE_ITEMS.length < 2) return;
+  // 校验数据是否都加载完
+  const loading = COMPARE_ITEMS.find(it => it.loading || (!it.data && !it.error));
+  if (loading) {
+    toast('数据加载中，请稍候…', '');
+    return;
+  }
   openCompareModal();
 });
 $('#compare-clear').addEventListener('click', () => {
   COMPARE_ITEMS = []; COMPARE_TYPE = null;
   renderCompareBar();
 });
-$('#compare-close').addEventListener('click', () => $('#compare-modal').classList.add('hidden'));
+$('#compare-close').addEventListener('click', () => {
+  $('#compare-modal').classList.add('hidden');
+  // 关闭对比页后清空，方便重新选择
+  COMPARE_ITEMS = [];
+  COMPARE_TYPE = null;
+  renderCompareBar();
+});
 $('#compare-swap').addEventListener('click', () => {
   if (COMPARE_ITEMS.length === 2) {
     [COMPARE_ITEMS[0], COMPARE_ITEMS[1]] = [COMPARE_ITEMS[1], COMPARE_ITEMS[0]];
@@ -1807,11 +1822,25 @@ $('#compare-swap').addEventListener('click', () => {
 
 function openCompareModal() {
   const [a, b] = COMPARE_ITEMS;
-  $('#compare-body').innerHTML = COMPARE_TYPE === 'team' ? renderTeamCompare(a, b) : renderPlayerCompare(a, b);
-  $('#compare-modal').classList.remove('hidden');
-  // 绘制球员双雷达
-  if (COMPARE_TYPE === 'player' && a.data && b.data && a.data.ability && b.data.ability) {
-    setTimeout(() => drawRadarCompare(a.data.ability, b.data.ability), 50);
+  console.log('[对比] a:', a.name, 'data:', !!a.data, a.data?.error || '');
+  console.log('[对比] b:', b.name, 'data:', !!b.data, b.data?.error || '');
+  try {
+    let html;
+    if (COMPARE_TYPE === 'team') {
+      html = renderTeamCompare(a, b);
+    } else {
+      html = renderPlayerCompare(a, b);
+    }
+    $('#compare-body').innerHTML = html;
+    $('#compare-modal').classList.remove('hidden');
+    // 绘制球员双雷达
+    if (COMPARE_TYPE === 'player' && a.data && b.data && a.data.ability && b.data.ability) {
+      setTimeout(() => drawRadarCompare(a.data.ability, b.data.ability), 50);
+    }
+  } catch (e) {
+    console.error('[对比渲染失败]', e);
+    $('#compare-body').innerHTML = `<div class="error-box">对比渲染失败：${esc(e.message)}<br><br>a.data: ${!!a.data} | b.data: ${!!b.data}<br>a.data.error: ${esc(a.data?.error||'无')} | b.data.error: ${esc(b.data?.error||'无')}</div>`;
+    $('#compare-modal').classList.remove('hidden');
   }
 }
 
@@ -1825,6 +1854,11 @@ function winnerClass(valA, valB, rule) {
   if (rule === 'high') return a > b ? ['winner', ''] : ['', 'winner'];
   if (rule === 'low') return a < b ? ['winner', ''] : ['', 'winner'];
   return ['', ''];
+}
+
+function fmtVal(v) {
+  if (v == null || v === '') return '<span class="cr-na">-</span>';
+  return esc(String(v));
 }
 
 // 从球队 info 提取数值字段
@@ -1868,40 +1902,33 @@ function renderTeamCompare(a, b) {
   const pa = parseTeamInfo(a.data || {});
   const pb = parseTeamInfo(b.data || {});
 
-  const headA = `<div class="compare-col-head"><div class="ch-name">${flag(a.name)} ${esc(a.name)}</div></div>`;
-  const headB = `<div class="compare-col-head"><div class="ch-name">${flag(b.name)} ${esc(b.name)}</div></div>`;
+  // 表头行：空格 | A | B
+  const head = `<div class="compare-col-head empty-head"></div>
+    <div class="compare-col-head"><div class="ch-name">${flag(a.name)} ${esc(a.name)}</div></div>
+    <div class="compare-col-head"><div class="ch-name">${flag(b.name)} ${esc(b.name)}</div></div>`;
 
-  // 分组行生成器：label + 两值 + 胜者规则
   const section = (title) => `<div class="compare-section-title">${esc(title)}</div>`;
   const row = (label, valA, valB, rule) => {
     const [wA, wB] = winnerClass(valA, valB, rule);
-    return `<div class="compare-row">
-      <div class="cr-label">${esc(label)}</div>
+    return `<div class="cr-cell cr-label">${esc(label)}</div>
       <div class="cr-cell ${wA}"><div class="cr-val">${fmtVal(valA)}</div></div>
-      <div class="cr-cell ${wB}"><div class="cr-val">${fmtVal(valB)}</div></div>
-    </div>`;
+      <div class="cr-cell ${wB}"><div class="cr-val">${fmtVal(valB)}</div></div>`;
   };
 
-  return `<div class="compare-grid">${headA}${headB}
+  return `<div class="compare-grid">${head}
     ${section('🏆 实力指标')}
-    ${row('FIFA 世界排名', pa.fifaRank, pb.fifaRank, 'low')}
+    ${row('FIFA 排名', pa.fifaRank, pb.fifaRank, 'low')}
     ${row('球队总身价', pa.value, pb.value, 'high')}
-    ${row('球队平均年龄', pa.avgAge, pb.avgAge, null)}
+    ${row('平均年龄', pa.avgAge, pb.avgAge, null)}
     ${section('📋 基本信息')}
     ${row('成立年份', pa.founded, pb.founded, null)}
     ${row('现任主教练', pa.coach, pb.coach, null)}
-    ${section('🏅 荣誉与历史')}
+    ${section('🏅 历史荣誉')}
     ${row('荣誉总数', pa.honors.length + ' 项', pb.honors.length + ' 项', 'high')}
     ${row('世界杯参赛', pa.history.length + ' 届', pb.history.length + ' 届', 'high')}
     ${row('世界杯夺冠', pa.champCount + ' 次', pb.champCount + ' 次', 'high')}
   </div>`;
 }
-
-function fmtVal(v) {
-  if (v == null || v === '') return '<span class="cr-na">-</span>';
-  return esc(String(v));
-}
-
 // ─── 球员对比渲染 ──────────────────────────────────────
 function renderPlayerCompare(a, b) {
   const da = a.data || {}, db = b.data || {};
@@ -1909,13 +1936,9 @@ function renderPlayerCompare(a, b) {
   const da2 = wa.detail || {}, db2 = wb.detail || {};
   const aa = da.ability || {}, ab = db.ability || {};
 
-  // 身价：detail.socialStatus + socialStatusUnit
   const valA = da2.socialStatus ? `${da2.socialStatus}${da2.socialStatusUnit || ''}` : null;
   const valB = db2.socialStatus ? `${db2.socialStatus}${db2.socialStatusUnit || ''}` : null;
-  const valANum = da2.socialStatus ? parseFloat(da2.socialStatus) : null;
-  const valBNum = db2.socialStatus ? parseFloat(db2.socialStatus) : null;
 
-  // 荣誉：用 honorRecords 的 totalWins 求和，或 honor 的 seasons 数
   const honorSum = (d) => {
     const hr = d.honorRecords || [];
     if (hr.length) return hr.reduce((s, h) => s + (parseInt(h.totalWins) || (h.seasons ? h.seasons.length : 1)), 0);
@@ -1924,26 +1947,26 @@ function renderPlayerCompare(a, b) {
   };
   const honA = honorSum(da), honB = honorSum(db);
 
-  const headA = `<div class="compare-col-head">
-    <div class="ch-name">${da2.national ? flag(da2.national) : ''} ${esc(wa.nickName || a.name)} ${wa.num ? '#' + esc(wa.num) : ''}</div>
-    <div class="ch-sub">${esc(da2.position || '')}</div>
-  </div>`;
-  const headB = `<div class="compare-col-head">
-    <div class="ch-name">${db2.national ? flag(db2.national) : ''} ${esc(wb.nickName || b.name)} ${wb.num ? '#' + esc(wb.num) : ''}</div>
-    <div class="ch-sub">${esc(db2.position || '')}</div>
-  </div>`;
+  // 表头
+  const head = `<div class="compare-col-head empty-head"></div>
+    <div class="compare-col-head">
+      <div class="ch-name">${flag(da2.national)} ${esc(wa.nickName || a.name)} ${wa.num ? '#' + esc(wa.num) : ''}</div>
+      <div class="ch-sub">${esc(da2.position || '')}</div>
+    </div>
+    <div class="compare-col-head">
+      <div class="ch-name">${flag(db2.national)} ${esc(wb.nickName || b.name)} ${wb.num ? '#' + esc(wb.num) : ''}</div>
+      <div class="ch-sub">${esc(db2.position || '')}</div>
+    </div>`;
 
   const section = (title) => `<div class="compare-section-title">${esc(title)}</div>`;
   const row = (label, valA, valB, rule) => {
     const [wA, wB] = winnerClass(valA, valB, rule);
-    return `<div class="compare-row">
-      <div class="cr-label">${esc(label)}</div>
+    return `<div class="cr-cell cr-label">${esc(label)}</div>
       <div class="cr-cell ${wA}"><div class="cr-val">${fmtVal(valA)}</div></div>
-      <div class="cr-cell ${wB}"><div class="cr-val">${fmtVal(valB)}</div></div>
-    </div>`;
+      <div class="cr-cell ${wB}"><div class="cr-val">${fmtVal(valB)}</div></div>`;
   };
 
-  // 雷达图各区数值对比行
+  // 六维能力数值行
   const radarRows = () => {
     const dimsA = aa.radarDims || [], dimsB = ab.radarDims || [];
     if (!dimsA.length) return '';
@@ -1955,24 +1978,25 @@ function renderPlayerCompare(a, b) {
     return html;
   };
 
-  // 雷达图区
+  // 雷达图
   const radarHtml = aa.radarDims && ab.radarDims && aa.radarDims.length && ab.radarDims.length ? `
-    <div class="compare-radar-section">
-      <div class="compare-radar-legend">
+    <div class="compare-section-title">📊 能力雷达</div>
+    <div style="grid-column:1/-1;padding:12px 0;text-align:center;background:var(--bg-2)">
+      <div class="compare-radar-legend" style="justify-content:center;gap:24px;margin-bottom:8px;font-size:12px">
         <div class="leg"><span class="leg-dot" style="background:var(--primary)"></span>${esc(wa.nickName || a.name)}</div>
         <div class="leg"><span class="leg-dot" style="background:var(--blue)"></span>${esc(wb.nickName || b.name)}</div>
       </div>
-      <div class="compare-radar-wrap"><canvas id="radar-compare" width="380" height="380"></canvas></div>
+      <canvas id="radar-compare" width="360" height="360"></canvas>
     </div>` : '';
 
-  return `<div class="compare-grid">${headA}${headB}
+  return `<div class="compare-grid">${head}
     ${section('👤 基本信息')}
     ${row('场上位置', da2.position, db2.position, null)}
     ${row('年龄', da2.age + ' 岁', db2.age + ' 岁', 'low')}
     ${row('身高', wa.height, wb.height, null)}
     ${row('体重', wa.weight, wb.weight, null)}
     ${row('惯用脚', da2.heavyFoot, db2.heavyFoot, null)}
-    ${section('💰 价值')}
+    ${section('💰 身价')}
     ${row('当前身价', valA, valB, 'high')}
     ${row('合同到期', da2.expiryDate, db2.expiryDate, null)}
     ${section('⭐ 综合能力')}
@@ -1983,7 +2007,6 @@ function renderPlayerCompare(a, b) {
     ${row('荣誉总数', honA + ' 次', honB + ' 次', 'high')}
   </div>`;
 }
-
 // ─── 双雷达图绘制 ──────────────────────────────────────
 function drawRadarCompare(abilityA, abilityB) {
   const canvas = $('#radar-compare');
