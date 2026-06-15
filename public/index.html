@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>2026 美加墨世界杯 · 数据看板</title>
+  <meta name="description" content="2026 FIFA 世界杯赛程、积分榜、排名、球队球员、竞彩赔率一站式看板" />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚽</text></svg>" />
+</head>
+<body>
+  <!-- ─── 顶部导航 ─── -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand" data-tab="schedule">
+        <span class="brand-ball">⚽</span>
+        <div class="brand-text">
+          <h1>2026 FIFA World Cup</h1>
+          <span class="brand-sub">🇺🇸 美加墨世界杯 · 数据看板</span>
+        </div>
+      </div>
+      <nav class="tabs">
+        <button class="tab active" data-tab="schedule">📅 赛程</button>
+        <button class="tab" data-tab="match">🔍 比赛详情</button>
+        <button class="tab" data-tab="standings">🏆 积分榜</button>
+        <button class="tab" data-tab="rankings">📊 排名</button>
+        <button class="tab" data-tab="teams">⚽ 球队/球员</button>
+        <button class="tab" data-tab="odds">🎰 竞彩赔率</button>
+        <button class="tab" data-tab="calc">🧮 计算器</button>
+      </nav>
+      <div class="topbar-actions">
+        <button class="icon-btn" id="refreshBtn" title="刷新当前页">🔄</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ─── 主内容区 ─── -->
+  <main id="app">
+
+    <!-- Tab 1: 赛程 -->
+    <section class="view active" id="view-schedule">
+      <div class="view-head">
+        <h2>📅 赛程</h2>
+        <div class="filters">
+          <div class="seg" id="schedule-seg">
+            <button class="seg-btn active" data-mode="today">今日</button>
+            <button class="seg-btn" data-mode="tomorrow">明日</button>
+            <button class="seg-btn" data-mode="date">指定日期</button>
+            <button class="seg-btn" data-mode="group">按组</button>
+          </div>
+          <input type="date" class="date-input hidden" id="schedule-date" />
+          <select class="select hidden" id="schedule-group">
+            <option value="">全部组</option>
+          </select>
+          <button class="btn primary" id="schedule-load">查询</button>
+        </div>
+      </div>
+      <div id="schedule-list"></div>
+    </section>
+
+    <!-- Tab 2: 比赛详情 -->
+    <section class="view" id="view-match">
+      <div class="view-head">
+        <h2>🔍 比赛详情</h2>
+        <p class="hint">点击下方比赛查看深度分析（AI预测/统计/赔率），或粘贴 matchId</p>
+      </div>
+      <!-- 左右布局：左比赛列表，右详情 -->
+      <div class="match-layout">
+        <div class="match-list-side">
+          <div class="match-search">
+            <input type="text" class="input grow" id="match-id-input" placeholder="粘贴 matchId…" />
+            <button class="btn primary" id="match-load">加载</button>
+          </div>
+          <div id="match-list" class="match-grid"></div>
+        </div>
+        <div id="match-detail" class="match-detail-side"></div>
+      </div>
+    </section>
+
+    <!-- Tab 3: 积分榜 -->
+    <section class="view" id="view-standings">
+      <div class="view-head">
+        <h2>🏆 小组积分榜</h2>
+        <div class="filters">
+          <label class="inline-check"><input type="checkbox" id="standings-expand" checked /> 全部展开</label>
+        </div>
+      </div>
+      <div id="standings-list" class="standings-grid"></div>
+    </section>
+
+    <!-- Tab 4: 排名 -->
+    <section class="view" id="view-rankings">
+      <div class="view-head">
+        <h2>📊 排名</h2>
+        <div class="filters">
+          <div class="seg" id="rankings-seg">
+            <button class="seg-btn active" data-mode="fifa">FIFA 排名</button>
+            <button class="seg-btn" data-mode="players">球员榜</button>
+          </div>
+        </div>
+      </div>
+      <div id="rankings-fifa-panel" class="rankings-panel">
+        <div class="filters">
+          <span class="hint">显示前</span>
+          <input type="number" class="num-input" id="fifa-n" value="30" min="5" max="50" />
+          <span class="hint">名</span>
+          <button class="btn primary" id="fifa-load">查询</button>
+        </div>
+        <div id="fifa-table"></div>
+      </div>
+      <div id="rankings-players-panel" class="rankings-panel hidden">
+        <div class="filters">
+          <select class="select" id="player-cat"></select>
+          <span class="hint">前</span>
+          <input type="number" class="num-input" id="player-n" value="20" min="5" max="50" />
+          <button class="btn primary" id="player-load">查询</button>
+        </div>
+        <div id="players-table"></div>
+      </div>
+    </section>
+
+    <!-- Tab 5: 球队/球员 -->
+    <section class="view" id="view-teams">
+      <div class="view-head">
+        <h2>⚽ 球队 & 球员</h2>
+        <div class="filters">
+          <select class="select" id="team-select"></select>
+          <div class="seg" id="team-tabs">
+            <button class="seg-btn active" data-tab="info">资料</button>
+            <button class="seg-btn" data-tab="lineup">阵容</button>
+            <button class="seg-btn" data-tab="history">历史</button>
+          </div>
+        </div>
+      </div>
+      <div id="team-detail" class="team-detail-wrap"></div>
+    </section>
+
+    <!-- Tab 6: 竞彩赔率 -->
+    <section class="view" id="view-odds">
+      <div class="view-head">
+        <h2>🎰 竞彩赔率 <span class="tag-warn">体彩官方 · sporttery.cn</span></h2>
+        <div class="filters">
+          <div class="seg" id="odds-seg">
+            <button class="seg-btn active" data-play="summary">概览</button>
+            <button class="seg-btn" data-play="had">胜平负</button>
+            <button class="seg-btn" data-play="hhad">让球</button>
+            <button class="seg-btn" data-play="crs">比分</button>
+            <button class="seg-btn" data-play="ttg">总进球</button>
+            <button class="seg-btn" data-play="hafu">混合过关</button>
+          </div>
+        </div>
+      </div>
+      <div class="filters">
+        <input type="text" class="input" id="odds-team" placeholder="按球队筛选（如 巴西）" />
+        <input type="date" class="date-input" id="odds-date" />
+        <button class="btn primary" id="odds-load">查询</button>
+      </div>
+      <div id="odds-list"></div>
+    </section>
+
+    <!-- Tab 7: 竞彩计算器 -->
+    <section class="view" id="view-calc">
+      <div class="view-head">
+        <h2>🧮 竞彩计算器</h2>
+        <div class="filters">
+          <div class="seg" id="calc-date-filter">
+            <button class="seg-btn active" data-date="all">全部</button>
+          </div>
+          <button class="btn" id="calc-load-matches">🔄 刷新赛事</button>
+        </div>
+      </div>
+
+      <!-- 三栏布局：选比赛 | 我的投注 | 购买建议 -->
+      <div class="calc-layout3">
+        <!-- 左栏：比赛选择（紧凑折叠） -->
+        <div class="calc-col calc-col-left">
+          <div class="calc-col-inner">
+            <div class="calc-col-head">🎯 选择比赛 <span class="hint">点击展开玩法</span></div>
+            <div id="calc-matches" class="calc-matches"></div>
+          </div>
+        </div>
+
+        <!-- 中栏：我的投注 + 计算 -->
+        <div class="calc-col calc-col-mid">
+          <div class="calc-col-inner">
+            <div class="calc-col-head">💰 我的投注</div>
+            <div class="calc-stake-row">
+              <label class="hint">本金 ¥</label>
+              <input type="number" class="num-input" id="calc-stake" value="100" min="2" step="2" style="width:90px" />
+              <span class="hint" id="calc-bet-count">已选 0 注</span>
+            </div>
+            <div id="calc-result"></div>
+          </div>
+        </div>
+
+        <!-- 右栏：购买建议 + 名词解释 -->
+        <div class="calc-col calc-col-right">
+          <div class="calc-col-inner">
+            <div class="calc-col-head">💡 购买建议 <span class="tag-warn">仅供参考</span></div>
+            <div id="calc-advice"></div>
+            <details class="calc-glossary-wrap">
+              <summary class="calc-glossary-toggle">📖 名词解释</summary>
+              <div class="calc-glossary">
+                <div><b>单关</b>：投注 1 场 1 个选项，奖金 = 本金 × 赔率</div>
+                <div><b>过关</b>：多场须全中，总赔率 = 各场赔率连乘</div>
+                <div><b>隐含概率</b>：1/赔率，赔率越低越被看好</div>
+                <div><b>返还率</b>：1/Σ隐含概率，反映抽水 ~88%</div>
+              </div>
+            </details>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ─── 比赛详情弹层 ─── -->
+  <div class="modal hidden" id="match-modal">
+    <div class="modal-mask"></div>
+    <div class="modal-box">
+      <button class="modal-close" id="modal-close">✕</button>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- ─── 球员详情弹层 ─── -->
+  <div class="modal hidden" id="player-modal">
+    <div class="modal-mask"></div>
+    <div class="modal-box">
+      <button class="modal-close" id="player-close">✕</button>
+      <div id="player-body"></div>
+    </div>
+  </div>
+
+  <!-- ─── 全局提示条 ─── -->
+  <div class="toast hidden" id="toast"></div>
+
+  <footer class="footer">
+    数据来源：百度体育 · 中国体彩 sporttery.cn ｜ 本看板仅供数据展示，请理性观赛
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
