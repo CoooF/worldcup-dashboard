@@ -804,13 +804,17 @@ function renderTeamHistory(data) {
 }
 
 // ─── 球员详情弹层 ──────────────────────────────────────
+// 当前打开的球员（供对比按钮使用）
+let CURRENT_PLAYER = null;
 async function openPlayerModal(playerId) {
   if (!playerId) return;
+  CURRENT_PLAYER = { id: playerId, name: '' };
   $('#player-body').innerHTML = '<div class="loading">加载球员详情…</div>';
   $('#player-modal').classList.remove('hidden');
   try {
     const data = await api(`/api/player/${encodeURIComponent(playerId)}/info`);
-    $('#player-body').innerHTML = renderPlayerInfo(data);
+    CURRENT_PLAYER.name = (data.wiki && data.wiki.nickName) || '球员';
+    $('#player-body').innerHTML = renderPlayerInfo(data, playerId);
     // 绘制雷达图
     if (data.ability && data.ability.radarDims) {
       setTimeout(() => drawRadar(data.ability), 50);
@@ -819,15 +823,23 @@ async function openPlayerModal(playerId) {
     $('#player-body').innerHTML = `<div class="error-box">球员详情加载失败：${esc(e.message)}</div>`;
   }
 }
+// 球员对比按钮（事件委托，因为按钮在动态生成的弹层里）
+$('#player-body').addEventListener('click', (e) => {
+  const btn = e.target.closest('#player-compare-add');
+  if (btn && CURRENT_PLAYER) {
+    addToCompare('player', CURRENT_PLAYER.id, CURRENT_PLAYER.name);
+  }
+});
 $('#player-close').addEventListener('click', () => $('#player-modal').classList.add('hidden'));
 
-function renderPlayerInfo(data) {
+function renderPlayerInfo(data, playerId) {
+  const cmpBtn = playerId ? `<button class="btn" id="player-compare-add" style="margin-bottom:14px">⊕ 加入对比</button>` : '';
   const wiki = data.wiki || {};
   const ability = data.ability || {};
   const honors = data.honor || data.honorRecords || [];
   const transfer = data.transfer || {};
 
-  let html = '<div class="card"><div class="card-title"><span class="ico">⚽</span> 球员资料</div>';
+  let html = cmpBtn + '<div class="card"><div class="card-title"><span class="ico">⚽</span> 球员资料</div>';
   if (wiki.nickName || wiki.num) {
     html += `<div style="font-size:22px;font-weight:800;margin-bottom:4px">${esc(wiki.nickName || wiki.name || '球员')} ${wiki.num ? '#' + esc(wiki.num) : ''}</div>`;
   }
@@ -1692,6 +1704,314 @@ function resetCalc() {
   CALC_SELECTIONS = {};
   CALC_MATCHES = null;
 }
+
+// ============================================================
+// 球队/球员对比功能（仿淘宝商品对比）
+// ============================================================
+
+// 对比状态：COMPARE_TYPE 区分球队/球员，COMPARE_ITEMS 最多 2 项
+let COMPARE_TYPE = null;   // 'team' | 'player'
+let COMPARE_ITEMS = [];    // [{ id, name, data }]
+
+// ─── 加入对比（预加载数据）────────────────────────────
+async function addToCompare(type, id, name) {
+  // 类型切换：如果换了类型，清空已有
+  if (COMPARE_TYPE && COMPARE_TYPE !== type) {
+    COMPARE_ITEMS = [];
+  }
+  COMPARE_TYPE = type;
+  // 已存在则忽略
+  if (COMPARE_ITEMS.some(it => String(it.id) === String(id))) {
+    toast('已在对比栏中', '');
+    renderCompareBar();
+    return;
+  }
+  // 满了替换最早的一个
+  if (COMPARE_ITEMS.length >= 2) {
+    COMPARE_ITEMS.shift();
+  }
+  const slot = { id, name, data: null };
+  COMPARE_ITEMS.push(slot);
+  renderCompareBar();
+  toast(`已加入对比 (${COMPARE_ITEMS.length}/2)`, 'ok');
+  // 预加载数据
+  try {
+    if (type === 'team') {
+      const [info, history] = await Promise.all([
+        api(`/api/team/${encodeURIComponent(name)}/info`),
+        api(`/api/team/${encodeURIComponent(name)}/history`).catch(() => null),
+      ]);
+      slot.data = { info, history };
+    } else {
+      slot.data = await api(`/api/player/${encodeURIComponent(id)}/info`);
+    }
+  } catch (e) {
+    slot.data = { error: e.message };
+  }
+  renderCompareBar();
+}
+
+// ─── 对比栏渲染 ────────────────────────────────────────
+function renderCompareBar() {
+  const bar = $('#compare-bar');
+  if (!COMPARE_ITEMS.length) {
+    bar.classList.remove('show');
+    setTimeout(() => bar.classList.add('hidden'), 300);
+    return;
+  }
+  bar.classList.remove('hidden');
+  requestAnimationFrame(() => bar.classList.add('show'));
+
+  $('#compare-count').textContent = `${COMPARE_ITEMS.length}/2`;
+  const slotsHtml = COMPARE_ITEMS.map((it, i) => {
+    const flagHtml = COMPARE_TYPE === 'team' ? flag(it.name) : (it.data && it.data.wiki && it.data.wiki.detail ? flag(it.data.wiki.detail.national) : '');
+    return `<div class="compare-slot">
+      ${flagHtml}
+      <span class="slot-name">${esc(it.name)}</span>
+      <button class="slot-remove" data-idx="${i}">✕</button>
+    </div>`;
+  }).join('');
+  // 补空槽
+  for (let i = COMPARE_ITEMS.length; i < 2; i++) {
+    slotsHtml && (slotsHtml += '<div class="compare-slot empty">+</div>');
+  }
+  $('#compare-slots').innerHTML = slotsHtml;
+  $('#compare-start').disabled = COMPARE_ITEMS.length < 2;
+
+  // 绑定删除
+  $$('#compare-slots .slot-remove').forEach(btn => {
+    btn.addEventListener('click', () => {
+      COMPARE_ITEMS.splice(parseInt(btn.dataset.idx), 1);
+      if (!COMPARE_ITEMS.length) COMPARE_TYPE = null;
+      renderCompareBar();
+    });
+  });
+}
+
+// ─── 开始对比：渲染对比页 ──────────────────────────────
+$('#compare-start').addEventListener('click', () => {
+  if (COMPARE_ITEMS.length < 2) return;
+  openCompareModal();
+});
+$('#compare-clear').addEventListener('click', () => {
+  COMPARE_ITEMS = []; COMPARE_TYPE = null;
+  renderCompareBar();
+});
+$('#compare-close').addEventListener('click', () => $('#compare-modal').classList.add('hidden'));
+$('#compare-swap').addEventListener('click', () => {
+  if (COMPARE_ITEMS.length === 2) {
+    [COMPARE_ITEMS[0], COMPARE_ITEMS[1]] = [COMPARE_ITEMS[1], COMPARE_ITEMS[0]];
+    openCompareModal();
+  }
+});
+
+function openCompareModal() {
+  const [a, b] = COMPARE_ITEMS;
+  $('#compare-body').innerHTML = COMPARE_TYPE === 'team' ? renderTeamCompare(a, b) : renderPlayerCompare(a, b);
+  $('#compare-modal').classList.remove('hidden');
+  // 绘制球员双雷达
+  if (COMPARE_TYPE === 'player' && a.data && b.data && a.data.ability && b.data.ability) {
+    setTimeout(() => drawRadarCompare(a.data.ability, b.data.ability), 50);
+  }
+}
+
+// ─── 胜者高亮工具 ──────────────────────────────────────
+// rule: 'high' 大者胜 | 'low' 小者胜 | null 不比
+function winnerClass(valA, valB, rule) {
+  if (valA == null || valB == null || !rule) return ['', ''];
+  const a = parseFloat(valA), b = parseFloat(valB);
+  if (isNaN(a) || isNaN(b)) return ['', ''];
+  if (a === b) return ['', ''];
+  if (rule === 'high') return a > b ? ['winner', ''] : ['', 'winner'];
+  if (rule === 'low') return a < b ? ['winner', ''] : ['', 'winner'];
+  return ['', ''];
+}
+
+// 从球队 info 提取数值字段
+function parseTeamInfo(data) {
+  const items = (data.info && data.info.baseInfo && data.info.baseInfo.items) || [];
+  const get = (key) => {
+    const it = items.find(x => x.name && x.name.includes(key));
+    return it ? it.content : null;
+  };
+  return {
+    fifaRank: get('排名') || get('FIFA'),
+    value: get('身价') || get('估值'),
+    founded: get('成立') || get('创建'),
+    coach: get('教练') || get('主帅'),
+    fifaRankNum: extractNum(get('排名') || get('FIFA')),
+    valueNum: extractMoney(get('身价') || get('估值')),
+    honors: (data.info && data.info.honor && data.info.honor.awards) || [],
+    history: (data.history && data.history.records) || [],
+  };
+}
+function extractNum(s) { if (!s) return null; const m = String(s).match(/\d+(\.\d+)?/); return m ? parseFloat(m[0]) : null; }
+function extractMoney(s) {
+  if (!s) return null;
+  const str = String(s);
+  const num = parseFloat(str.match(/[\d.]+/)?.[0]);
+  if (isNaN(num)) return null;
+  if (str.includes('亿')) return num * 10000;
+  if (str.includes('万')) return num;
+  return num;
+}
+
+// ─── 球队对比渲染 ──────────────────────────────────────
+function renderTeamCompare(a, b) {
+  const pa = parseTeamInfo(a.data || {});
+  const pb = parseTeamInfo(b.data || {});
+  const bestHistory = (h) => {
+    if (!h || !h.length) return '-';
+    const champs = h.filter(r => (r.description || '').includes('冠军'));
+    return champs.length ? `冠军×${champs.length}` : (h[0].description || '-');
+  };
+  // 胜者判定
+  const [rankWA, rankWB] = winnerClass(pa.fifaRankNum, pb.fifaRankNum, 'low');
+  const [valWA, valWB] = winnerClass(pa.valueNum, pb.valueNum, 'high');
+  const [honWA, honWB] = winnerClass(pa.honors.length, pb.honors.length, 'high');
+  const [wcWA, wcWB] = winnerClass(pa.history.length, pb.history.length, 'high');
+
+  const headA = `<div class="compare-col-head"><div class="ch-name">${flag(a.name)} ${esc(a.name)}</div><div class="ch-sub">${a.data && a.data.error ? '数据加载失败' : ''}</div></div>`;
+  const headB = `<div class="compare-col-head"><div class="ch-name">${flag(b.name)} ${esc(b.name)}</div><div class="ch-sub">${b.data && b.data.error ? '数据加载失败' : ''}</div></div>`;
+
+  const row = (label, valA, valB, wA, wB) => `
+    <div class="compare-row">
+      <div class="cr-label">${esc(label)}</div>
+      <div class="cr-cell ${wA}"><div class="cr-val">${valA == null || valA === '' ? '-' : esc(String(valA))}</div></div>
+      <div class="cr-cell ${wB}"><div class="cr-val">${valB == null || valB === '' ? '-' : esc(String(valB))}</div></div>
+    </div>`;
+
+  return `<div class="compare-grid">${headA}${headB}
+    ${row('FIFA 排名', pa.fifaRank, pb.fifaRank, rankWA, rankWB)}
+    ${row('球队身价', pa.value, pb.value, valWA, valWB)}
+    ${row('成立年份', pa.founded, pb.founded, '', '')}
+    ${row('主教练', pa.coach, pb.coach, '', '')}
+    ${row('荣誉数量', pa.honors.length + ' 项', pb.honors.length + ' 项', honWA, honWB)}
+    ${row('世界杯参赛', pa.history.length + ' 届', pb.history.length + ' 届', wcWA, wcWB)}
+    ${row('历史最好成绩', bestHistory(pa.history), bestHistory(pb.history), '', '')}
+  </div>`;
+}
+
+// ─── 球员对比渲染 ──────────────────────────────────────
+function renderPlayerCompare(a, b) {
+  const da = a.data || {}, db = b.data || {};
+  const wa = da.wiki || {}, wb = db.wiki || {};
+  const da2 = wa.detail || {}, db2 = wb.detail || {};
+  const aa = da.ability || {}, ab = db.ability || {};
+
+  const headA = `<div class="compare-col-head">
+    <div class="ch-name">${wa.detail && wa.detail.national ? flag(wa.detail.national) : ''} ${esc(wa.nickName || a.name)} ${wa.num ? '#' + esc(wa.num) : ''}</div>
+    <div class="ch-sub">${esc(da2.position || '')} ${da2.age ? '· ' + esc(da2.age) : ''}</div>
+  </div>`;
+  const headB = `<div class="compare-col-head">
+    <div class="ch-name">${wb.detail && wb.detail.national ? flag(wb.detail.national) : ''} ${esc(wb.nickName || b.name)} ${wb.num ? '#' + esc(wb.num) : ''}</div>
+    <div class="ch-sub">${esc(db2.position || '')} ${db2.age ? '· ' + esc(db2.age) : ''}</div>
+  </div>`;
+
+  const [ageWA, ageWB] = winnerClass(extractNum(da2.age), extractNum(db2.age), null);
+  const [overallWA, overallWB] = winnerClass(aa.overall, ab.overall, 'high');
+  const honorsA = (da.honor || da.honorRecords || []).length;
+  const honorsB = (db.honor || db.honorRecords || []).length;
+  const [honWA, honWB] = winnerClass(honorsA, honorsB, 'high');
+
+  const row = (label, valA, valB, wA, wB) => `
+    <div class="compare-row">
+      <div class="cr-label">${esc(label)}</div>
+      <div class="cr-cell ${wA}"><div class="cr-val">${valA == null || valA === '' ? '-' : esc(String(valA))}</div></div>
+      <div class="cr-cell ${wB}"><div class="cr-val">${valB == null || valB === '' ? '-' : esc(String(valB))}</div></div>
+    </div>`;
+
+  // 雷达图区
+  const radarHtml = aa.radarDims && ab.radarDims ? `
+    <div class="compare-row">
+      <div class="cr-label">能力对比（雷达图）</div>
+      <div class="compare-radar-wrap">
+        <div>
+          <div class="compare-radar-legend">
+            <div class="leg"><span class="leg-dot" style="background:var(--primary)"></span>${esc(wa.nickName || a.name)}</div>
+            <div class="leg"><span class="leg-dot" style="background:var(--blue)"></span>${esc(wb.nickName || b.name)}</div>
+          </div>
+          <canvas id="radar-compare" width="380" height="380"></canvas>
+        </div>
+      </div>
+    </div>` : '';
+
+  return `<div class="compare-grid">${headA}${headB}
+    ${row('位置', da2.position, db2.position, '', '')}
+    ${row('年龄', da2.age, db2.age, '', '')}
+    ${row('身高', wa.height, wb.height, '', '')}
+    ${row('体重', wa.weight, wb.weight, '', '')}
+    ${row('惯用脚', da2.heavyFoot, db2.heavyFoot, '', '')}
+    ${row('综合评分', aa.overall, ab.overall, overallWA, overallWB)}
+    ${row('荣誉数量', honorsA + ' 项', honorsB + ' 项', honWA, honWB)}
+    ${radarHtml}
+  </div>`;
+}
+
+// ─── 双雷达图绘制 ──────────────────────────────────────
+function drawRadarCompare(abilityA, abilityB) {
+  const canvas = $('#radar-compare');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H / 2;
+  const R = Math.min(W, H) / 2 - 50;
+  const dimsA = abilityA.radarDims || [];
+  const dimsB = abilityB.radarDims || [];
+  const n = Math.max(dimsA.length, dimsB.length);
+  if (n < 3) return;
+
+  ctx.clearRect(0, 0, W, H);
+  // 网格
+  ctx.strokeStyle = '#243029'; ctx.lineWidth = 1;
+  for (let level = 1; level <= 5; level++) {
+    const r = (R / 5) * level;
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const ang = -Math.PI / 2 + (Math.PI * 2 * i) / n;
+      const x = cx + Math.cos(ang) * r, y = cy + Math.sin(ang) * r;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.closePath(); ctx.stroke();
+  }
+  // 轴线
+  for (let i = 0; i < n; i++) {
+    const ang = -Math.PI / 2 + (Math.PI * 2 * i) / n;
+    ctx.beginPath(); ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(ang) * R, cy + Math.sin(ang) * R);
+    ctx.stroke();
+  }
+  // 画多边形
+  const drawPoly = (dims, fillColor, strokeColor) => {
+    ctx.fillStyle = fillColor; ctx.strokeStyle = strokeColor; ctx.lineWidth = 2;
+    ctx.beginPath();
+    dims.forEach((d, i) => {
+      const val = parseFloat(d.value) || 0;
+      const r = (Math.min(val, 100) / 100) * R;
+      const ang = -Math.PI / 2 + (Math.PI * 2 * i) / n;
+      const x = cx + Math.cos(ang) * r, y = cy + Math.sin(ang) * r;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+  };
+  drawPoly(dimsA, 'rgba(45, 212, 167, 0.2)', '#2dd4a7');
+  drawPoly(dimsB, 'rgba(59, 158, 255, 0.2)', '#3b9eff');
+  // 标签
+  ctx.fillStyle = '#8fa89a'; ctx.font = '12px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  dimsA.forEach((d, i) => {
+    const ang = -Math.PI / 2 + (Math.PI * 2 * i) / n;
+    const x = cx + Math.cos(ang) * (R + 26), y = cy + Math.sin(ang) * (R + 26);
+    ctx.fillText(d.name, x, y);
+  });
+}
+
+// ─── 球队对比按钮 ──────────────────────────────────────
+$('#team-compare-btn').addEventListener('click', () => {
+  const team = $('#team-select').value;
+  if (!team) { toast('请先选择球队', 'err'); return; }
+  addToCompare('team', team, team);
+});
 
 // ─── 启动：加载首页 ────────────────────────────────────
 loadSchedule();

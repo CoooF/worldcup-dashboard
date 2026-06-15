@@ -1262,3 +1262,140 @@ main {
 }
 .disclaimer-bar .ico { color: var(--red); flex-shrink: 0; }
 
+
+/* ============================================================
+   对比功能样式
+   ============================================================ */
+
+/* 底部对比悬浮栏 */
+.compare-bar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 200;
+  background: rgba(15, 22, 20, 0.96);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid var(--border-light);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.4);
+  transform: translateY(100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.compare-bar.show { transform: translateY(0); }
+.compare-bar-inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.compare-bar-label {
+  font-size: 13px; font-weight: 700; white-space: nowrap;
+}
+.compare-slots {
+  display: flex; gap: 10px; flex: 1; min-width: 0;
+}
+.compare-slot {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 13px;
+  max-width: 220px;
+}
+.compare-slot .flag-img { width: 22px; height: 16px; border-radius: 2px; flex-shrink: 0; }
+.compare-slot .slot-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.compare-slot .slot-remove {
+  background: none; border: none; color: var(--text-muted);
+  cursor: pointer; font-size: 14px; padding: 0 2px; line-height: 1;
+}
+.compare-slot .slot-remove:hover { color: var(--red); }
+.compare-slot.empty {
+  border-style: dashed; color: var(--text-muted);
+  background: transparent;
+}
+#compare-start:disabled { opacity: 0.4; }
+
+/* 对比弹层（全屏） */
+.compare-modal { padding: 0; }
+.compare-box {
+  max-width: 1100px;
+  width: calc(100% - 40px);
+  max-height: 92vh;
+  padding: 24px;
+}
+.compare-swap {
+  position: absolute; top: 16px; right: 56px;
+  z-index: 10;
+}
+
+/* 对比表格 */
+.compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  margin-top: 8px;
+}
+.compare-col-head {
+  text-align: center;
+  padding: 20px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.compare-col-head .ch-name { font-size: 20px; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.compare-col-head .ch-name .flag-img { width: 36px; height: 27px; border-radius: 4px; }
+.compare-col-head .ch-sub { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+
+.compare-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: 1px solid rgba(45, 51, 59, 0.5);
+}
+.compare-row .cr-label {
+  grid-column: 1 / -1;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 8px 16px 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: var(--bg-2);
+}
+.compare-row .cr-cell {
+  padding: 12px 16px;
+  text-align: center;
+  font-size: 14px;
+  position: relative;
+}
+.compare-row .cr-cell.winner {
+  color: var(--primary);
+  font-weight: 700;
+  background: rgba(45, 212, 167, 0.06);
+}
+.compare-row .cr-cell.winner::after {
+  content: '▲';
+  position: absolute; top: 4px; right: 8px;
+  font-size: 9px; color: var(--primary);
+}
+.compare-row .cr-cell .cr-val { font-family: var(--mono); font-size: 16px; font-weight: 700; }
+.compare-row .cr-cell .cr-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+/* 对比雷达图容器 */
+.compare-radar-wrap {
+  display: flex; justify-content: center;
+  padding: 16px 0;
+  grid-column: 1 / -1;
+}
+.compare-radar-wrap canvas { max-width: 380px; }
+.compare-radar-legend {
+  display: flex; justify-content: center; gap: 20px;
+  margin-bottom: 12px; font-size: 12px;
+}
+.compare-radar-legend .leg { display: flex; align-items: center; gap: 6px; }
+.compare-radar-legend .leg-dot { width: 12px; height: 12px; border-radius: 3px; }
+
+@media (max-width: 768px) {
+  .compare-grid { grid-template-columns: 1fr; }
+  .compare-row { grid-template-columns: 1fr 1fr; }
+  .compare-bar-inner { flex-wrap: wrap; }
+  .compare-slots { order: 3; width: 100%; }
+}

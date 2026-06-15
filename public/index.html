@@ -125,6 +125,7 @@
         <h2>⚽ 球队 & 球员</h2>
         <div class="filters">
           <select class="select" id="team-select"></select>
+          <button class="btn" id="team-compare-btn">⊕ 加入对比</button>
           <div class="seg" id="team-tabs">
             <button class="seg-btn active" data-tab="info">资料</button>
             <button class="seg-btn" data-tab="lineup">阵容</button>
@@ -234,6 +235,26 @@
 
   <!-- ─── 全局提示条 ─── -->
   <div class="toast hidden" id="toast"></div>
+
+  <!-- ─── 底部对比栏 ─── -->
+  <div class="compare-bar hidden" id="compare-bar">
+    <div class="compare-bar-inner">
+      <span class="compare-bar-label">🆚 对比栏 <span id="compare-count">0/2</span></span>
+      <div class="compare-slots" id="compare-slots"></div>
+      <button class="btn primary" id="compare-start" disabled>开始对比</button>
+      <button class="btn" id="compare-clear">清空</button>
+    </div>
+  </div>
+
+  <!-- ─── 对比弹层（全屏） ─── -->
+  <div class="modal hidden compare-modal" id="compare-modal">
+    <div class="modal-mask"></div>
+    <div class="modal-box compare-box">
+      <button class="modal-close" id="compare-close">✕</button>
+      <button class="btn compare-swap" id="compare-swap" title="左右互换">🔄</button>
+      <div id="compare-body"></div>
+    </div>
+  </div>
 
   <footer class="footer">
     数据来源：百度体育 · 中国体彩 sporttery.cn ｜ 本看板仅供数据展示，请理性观赛
