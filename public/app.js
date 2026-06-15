@@ -1834,15 +1834,22 @@ function parseTeamInfo(data) {
     const it = items.find(x => x.name && x.name.includes(key));
     return it ? it.content : null;
   };
+  const honors = (data.info && data.info.honor && data.info.honor.awards) || [];
+  const history = (data.history && data.history.records) || [];
+  // 统计世界杯冠军次数
+  const champCount = history.filter(r => (r.description || '').includes('冠军') && !(r.description||'').includes('不敌')).length;
   return {
     fifaRank: get('排名') || get('FIFA'),
-    value: get('身价') || get('估值'),
-    founded: get('成立') || get('创建'),
+    value: get('身价'),
+    avgAge: get('年龄'),
+    founded: get('成立'),
     coach: get('教练') || get('主帅'),
     fifaRankNum: extractNum(get('排名') || get('FIFA')),
-    valueNum: extractMoney(get('身价') || get('估值')),
-    honors: (data.info && data.info.honor && data.info.honor.awards) || [],
-    history: (data.history && data.history.records) || [],
+    valueNum: extractMoney(get('身价')),
+    avgAgeNum: extractNum(get('年龄')),
+    honors,
+    history,
+    champCount,
   };
 }
 function extractNum(s) { if (!s) return null; const m = String(s).match(/\d+(\.\d+)?/); return m ? parseFloat(m[0]) : null; }
@@ -1860,36 +1867,39 @@ function extractMoney(s) {
 function renderTeamCompare(a, b) {
   const pa = parseTeamInfo(a.data || {});
   const pb = parseTeamInfo(b.data || {});
-  const bestHistory = (h) => {
-    if (!h || !h.length) return '-';
-    const champs = h.filter(r => (r.description || '').includes('冠军'));
-    return champs.length ? `冠军×${champs.length}` : (h[0].description || '-');
-  };
-  // 胜者判定
-  const [rankWA, rankWB] = winnerClass(pa.fifaRankNum, pb.fifaRankNum, 'low');
-  const [valWA, valWB] = winnerClass(pa.valueNum, pb.valueNum, 'high');
-  const [honWA, honWB] = winnerClass(pa.honors.length, pb.honors.length, 'high');
-  const [wcWA, wcWB] = winnerClass(pa.history.length, pb.history.length, 'high');
 
-  const headA = `<div class="compare-col-head"><div class="ch-name">${flag(a.name)} ${esc(a.name)}</div><div class="ch-sub">${a.data && a.data.error ? '数据加载失败' : ''}</div></div>`;
-  const headB = `<div class="compare-col-head"><div class="ch-name">${flag(b.name)} ${esc(b.name)}</div><div class="ch-sub">${b.data && b.data.error ? '数据加载失败' : ''}</div></div>`;
+  const headA = `<div class="compare-col-head"><div class="ch-name">${flag(a.name)} ${esc(a.name)}</div></div>`;
+  const headB = `<div class="compare-col-head"><div class="ch-name">${flag(b.name)} ${esc(b.name)}</div></div>`;
 
-  const row = (label, valA, valB, wA, wB) => `
-    <div class="compare-row">
+  // 分组行生成器：label + 两值 + 胜者规则
+  const section = (title) => `<div class="compare-section-title">${esc(title)}</div>`;
+  const row = (label, valA, valB, rule) => {
+    const [wA, wB] = winnerClass(valA, valB, rule);
+    return `<div class="compare-row">
       <div class="cr-label">${esc(label)}</div>
-      <div class="cr-cell ${wA}"><div class="cr-val">${valA == null || valA === '' ? '-' : esc(String(valA))}</div></div>
-      <div class="cr-cell ${wB}"><div class="cr-val">${valB == null || valB === '' ? '-' : esc(String(valB))}</div></div>
+      <div class="cr-cell ${wA}"><div class="cr-val">${fmtVal(valA)}</div></div>
+      <div class="cr-cell ${wB}"><div class="cr-val">${fmtVal(valB)}</div></div>
     </div>`;
+  };
 
   return `<div class="compare-grid">${headA}${headB}
-    ${row('FIFA 排名', pa.fifaRank, pb.fifaRank, rankWA, rankWB)}
-    ${row('球队身价', pa.value, pb.value, valWA, valWB)}
-    ${row('成立年份', pa.founded, pb.founded, '', '')}
-    ${row('主教练', pa.coach, pb.coach, '', '')}
-    ${row('荣誉数量', pa.honors.length + ' 项', pb.honors.length + ' 项', honWA, honWB)}
-    ${row('世界杯参赛', pa.history.length + ' 届', pb.history.length + ' 届', wcWA, wcWB)}
-    ${row('历史最好成绩', bestHistory(pa.history), bestHistory(pb.history), '', '')}
+    ${section('🏆 实力指标')}
+    ${row('FIFA 世界排名', pa.fifaRank, pb.fifaRank, 'low')}
+    ${row('球队总身价', pa.value, pb.value, 'high')}
+    ${row('球队平均年龄', pa.avgAge, pb.avgAge, null)}
+    ${section('📋 基本信息')}
+    ${row('成立年份', pa.founded, pb.founded, null)}
+    ${row('现任主教练', pa.coach, pb.coach, null)}
+    ${section('🏅 荣誉与历史')}
+    ${row('荣誉总数', pa.honors.length + ' 项', pb.honors.length + ' 项', 'high')}
+    ${row('世界杯参赛', pa.history.length + ' 届', pb.history.length + ' 届', 'high')}
+    ${row('世界杯夺冠', pa.champCount + ' 次', pb.champCount + ' 次', 'high')}
   </div>`;
+}
+
+function fmtVal(v) {
+  if (v == null || v === '') return '<span class="cr-na">-</span>';
+  return esc(String(v));
 }
 
 // ─── 球员对比渲染 ──────────────────────────────────────
@@ -1899,52 +1909,78 @@ function renderPlayerCompare(a, b) {
   const da2 = wa.detail || {}, db2 = wb.detail || {};
   const aa = da.ability || {}, ab = db.ability || {};
 
+  // 身价：detail.socialStatus + socialStatusUnit
+  const valA = da2.socialStatus ? `${da2.socialStatus}${da2.socialStatusUnit || ''}` : null;
+  const valB = db2.socialStatus ? `${db2.socialStatus}${db2.socialStatusUnit || ''}` : null;
+  const valANum = da2.socialStatus ? parseFloat(da2.socialStatus) : null;
+  const valBNum = db2.socialStatus ? parseFloat(db2.socialStatus) : null;
+
+  // 荣誉：用 honorRecords 的 totalWins 求和，或 honor 的 seasons 数
+  const honorSum = (d) => {
+    const hr = d.honorRecords || [];
+    if (hr.length) return hr.reduce((s, h) => s + (parseInt(h.totalWins) || (h.seasons ? h.seasons.length : 1)), 0);
+    const h = d.honor || [];
+    return h.reduce((s, x) => s + (x.seasons ? x.seasons.length : 1), 0);
+  };
+  const honA = honorSum(da), honB = honorSum(db);
+
   const headA = `<div class="compare-col-head">
-    <div class="ch-name">${wa.detail && wa.detail.national ? flag(wa.detail.national) : ''} ${esc(wa.nickName || a.name)} ${wa.num ? '#' + esc(wa.num) : ''}</div>
-    <div class="ch-sub">${esc(da2.position || '')} ${da2.age ? '· ' + esc(da2.age) : ''}</div>
+    <div class="ch-name">${da2.national ? flag(da2.national) : ''} ${esc(wa.nickName || a.name)} ${wa.num ? '#' + esc(wa.num) : ''}</div>
+    <div class="ch-sub">${esc(da2.position || '')}</div>
   </div>`;
   const headB = `<div class="compare-col-head">
-    <div class="ch-name">${wb.detail && wb.detail.national ? flag(wb.detail.national) : ''} ${esc(wb.nickName || b.name)} ${wb.num ? '#' + esc(wb.num) : ''}</div>
-    <div class="ch-sub">${esc(db2.position || '')} ${db2.age ? '· ' + esc(db2.age) : ''}</div>
+    <div class="ch-name">${db2.national ? flag(db2.national) : ''} ${esc(wb.nickName || b.name)} ${wb.num ? '#' + esc(wb.num) : ''}</div>
+    <div class="ch-sub">${esc(db2.position || '')}</div>
   </div>`;
 
-  const [ageWA, ageWB] = winnerClass(extractNum(da2.age), extractNum(db2.age), null);
-  const [overallWA, overallWB] = winnerClass(aa.overall, ab.overall, 'high');
-  const honorsA = (da.honor || da.honorRecords || []).length;
-  const honorsB = (db.honor || db.honorRecords || []).length;
-  const [honWA, honWB] = winnerClass(honorsA, honorsB, 'high');
-
-  const row = (label, valA, valB, wA, wB) => `
-    <div class="compare-row">
+  const section = (title) => `<div class="compare-section-title">${esc(title)}</div>`;
+  const row = (label, valA, valB, rule) => {
+    const [wA, wB] = winnerClass(valA, valB, rule);
+    return `<div class="compare-row">
       <div class="cr-label">${esc(label)}</div>
-      <div class="cr-cell ${wA}"><div class="cr-val">${valA == null || valA === '' ? '-' : esc(String(valA))}</div></div>
-      <div class="cr-cell ${wB}"><div class="cr-val">${valB == null || valB === '' ? '-' : esc(String(valB))}</div></div>
+      <div class="cr-cell ${wA}"><div class="cr-val">${fmtVal(valA)}</div></div>
+      <div class="cr-cell ${wB}"><div class="cr-val">${fmtVal(valB)}</div></div>
     </div>`;
+  };
+
+  // 雷达图各区数值对比行
+  const radarRows = () => {
+    const dimsA = aa.radarDims || [], dimsB = ab.radarDims || [];
+    if (!dimsA.length) return '';
+    let html = section('🎯 六维能力');
+    dimsA.forEach((d, i) => {
+      const dB = dimsB[i] || {};
+      html += row(d.name, d.value, dB.value || '-', 'high');
+    });
+    return html;
+  };
 
   // 雷达图区
-  const radarHtml = aa.radarDims && ab.radarDims ? `
-    <div class="compare-row">
-      <div class="cr-label">能力对比（雷达图）</div>
-      <div class="compare-radar-wrap">
-        <div>
-          <div class="compare-radar-legend">
-            <div class="leg"><span class="leg-dot" style="background:var(--primary)"></span>${esc(wa.nickName || a.name)}</div>
-            <div class="leg"><span class="leg-dot" style="background:var(--blue)"></span>${esc(wb.nickName || b.name)}</div>
-          </div>
-          <canvas id="radar-compare" width="380" height="380"></canvas>
-        </div>
+  const radarHtml = aa.radarDims && ab.radarDims && aa.radarDims.length && ab.radarDims.length ? `
+    <div class="compare-radar-section">
+      <div class="compare-radar-legend">
+        <div class="leg"><span class="leg-dot" style="background:var(--primary)"></span>${esc(wa.nickName || a.name)}</div>
+        <div class="leg"><span class="leg-dot" style="background:var(--blue)"></span>${esc(wb.nickName || b.name)}</div>
       </div>
+      <div class="compare-radar-wrap"><canvas id="radar-compare" width="380" height="380"></canvas></div>
     </div>` : '';
 
   return `<div class="compare-grid">${headA}${headB}
-    ${row('位置', da2.position, db2.position, '', '')}
-    ${row('年龄', da2.age, db2.age, '', '')}
-    ${row('身高', wa.height, wb.height, '', '')}
-    ${row('体重', wa.weight, wb.weight, '', '')}
-    ${row('惯用脚', da2.heavyFoot, db2.heavyFoot, '', '')}
-    ${row('综合评分', aa.overall, ab.overall, overallWA, overallWB)}
-    ${row('荣誉数量', honorsA + ' 项', honorsB + ' 项', honWA, honWB)}
+    ${section('👤 基本信息')}
+    ${row('场上位置', da2.position, db2.position, null)}
+    ${row('年龄', da2.age + ' 岁', db2.age + ' 岁', 'low')}
+    ${row('身高', wa.height, wb.height, null)}
+    ${row('体重', wa.weight, wb.weight, null)}
+    ${row('惯用脚', da2.heavyFoot, db2.heavyFoot, null)}
+    ${section('💰 价值')}
+    ${row('当前身价', valA, valB, 'high')}
+    ${row('合同到期', da2.expiryDate, db2.expiryDate, null)}
+    ${section('⭐ 综合能力')}
+    ${row('综合评分', aa.overall, ab.overall, 'high')}
+    ${radarRows()}
     ${radarHtml}
+    ${section('🏅 荣誉')}
+    ${row('荣誉总数', honA + ' 次', honB + ' 次', 'high')}
   </div>`;
 }
 
