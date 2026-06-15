@@ -350,7 +350,8 @@ main {
   gap: 8px;
   text-align: center;
 }
-.team-flag { font-size: 44px; line-height: 1; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.5)); }
+.team-flag { line-height: 0; }
+.team-flag .flag-img { width: 48px; height: 36px; object-fit: cover; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.4); }
 .team-name { font-size: 14px; font-weight: 700; color: var(--text); }
 .team-rank { font-size: 10px; color: var(--text-muted); }
 
@@ -610,7 +611,7 @@ main {
   box-shadow: 0 0 0 2px var(--primary), var(--shadow-glow);
 }
 .match-list-side .match-card { padding: 12px; }
-.match-list-side .team-flag { font-size: 28px; }
+.match-list-side .team-flag .flag-img { width: 28px; height: 21px; }
 .match-list-side .match-score { font-size: 22px; min-width: 56px; }
 .match-list-side .match-score .vs { font-size: 13px; }
 .match-list-side .team-name { font-size: 12px; }
@@ -1079,7 +1080,8 @@ main {
 .calc-match-compact:hover { background: var(--card-hover); border-left-color: var(--primary); }
 .calc-match-compact.expanded { border-left-color: var(--gold); background: var(--card-hover); }
 .calc-match-compact.has-pick { border-left-color: var(--primary); }
-.calc-match-compact .mc-flag { font-size: 20px; flex-shrink: 0; }
+.calc-match-compact .mc-flag { flex-shrink: 0; line-height: 0; }
+.calc-match-compact .mc-flag .flag-img { width: 24px; height: 18px; object-fit: cover; border-radius: 2px; }
 .calc-match-compact .mc-teams { flex: 1; min-width: 0; font-weight: 600; }
 .calc-match-compact .mc-teams .vs { color: var(--text-muted); font-weight: 400; margin: 0 3px; }
 .calc-match-compact .mc-time { font-family: var(--mono); font-size: 11px; color: var(--gold); flex-shrink: 0; }
@@ -1108,7 +1110,8 @@ main {
 }
 .calc-match-expand .calc-vs-team { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .calc-match-expand .calc-vs-team:last-child { justify-content: flex-end; }
-.calc-match-expand .team-flag-lg { font-size: 22px; flex-shrink: 0; }
+.calc-match-expand .team-flag-lg { flex-shrink: 0; line-height: 0; }
+.calc-match-expand .team-flag-lg .flag-img { width: 28px; height: 21px; object-fit: cover; border-radius: 3px; }
 .calc-match-expand .calc-vs-name { font-weight: 700; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .calc-match-expand .calc-vs-time { font-family: var(--mono); font-size: 12px; color: var(--gold); font-weight: 700; }
 
